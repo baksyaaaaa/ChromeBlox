@@ -131,6 +131,21 @@ QSlider::handle:horizontal { background: $accent; width: 18px; height: 18px; mar
 QMenu { background: $surface; border: 1px solid $border; padding: 4px; }
 QMenu::item { padding: 6px 18px; border-radius: 6px; }
 QMenu::item:selected { background: $accent_soft; color: $accent; }
+QFrame[tile="true"] { background: $card; border: 1px solid $border; border-radius: 12px; }
+QFrame[tile="true"]:hover { border: 1px solid $accent; background: $tile_hover; }
+QFrame[tile="true"][selected="true"] { border: 2px solid $accent; }
+QFrame[server="true"] { background: $card; border: 1px solid $border; border-radius: 12px; }
+QFrame[server="true"]:hover { border: 1px solid $accent_soft_border; background: $tile_hover; }
+QLabel[pill="true"] { background: $accent_soft; color: $accent; border-radius: 10px; padding: 3px 10px; font-weight: 600; }
+QLabel[stat="true"] { background: $glass; border: 1px solid $glass_border; border-radius: 8px; padding: 3px 9px; color: $muted; font-weight: 600; }
+QLabel#render { background: qradialgradient(cx:0.5, cy:0.42, radius:0.62, fx:0.5, fy:0.42, stop:0 $accent_glow, stop:1 transparent); border-radius: 12px; }
+QLabel#gamebig { background: $surface_hi; border-radius: 14px; }
+QPushButton[seg="true"] { padding: 6px 18px; }
+QPushButton[seg="true"]:checked { background: $accent_glass; border: 1px solid $accent_glass_border; }
+QPushButton[join="true"] { background: $accent_glass; border: 1px solid $accent_glass_border; padding: 8px 22px; }
+QPushButton[join="true"]:hover { background: $accent_glass_hover; }
+QProgressBar[thin="true"] { max-height: 6px; min-height: 6px; border-radius: 3px; }
+QProgressBar[thin="true"]::chunk { border-radius: 3px; }
 QToolTip, QMessageBox, QDialog { background: $surface; color: $text; border: 1px solid $border; }
 """)
 
@@ -151,5 +166,6 @@ def build_qss(theme, has_image=False):
         glass=rgba(text, 0.07), glass_hover=rgba(text, 0.12), glass_press=rgba(text, 0.04),
         glass_border=rgba(text, 0.16),
         accent_glass=rgba(acc, 0.42), accent_glass_hover=rgba(acc, 0.56), accent_glass_border=rgba(acc, 0.85),
+        tile_hover=rgba(mix(surf, text, 0.05), a_card), accent_glow=rgba(acc, 0.30),
         accent_soft=rgba(acc, 0.16), accent_soft_border=rgba(acc, 0.35),
         chev=chev, check=check)

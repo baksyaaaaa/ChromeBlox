@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "Chrome Blox"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 BASE = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / ".local" / "share")) / "ChromeBlox"
 VERSIONS = BASE / "Versions"

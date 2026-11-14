@@ -21,90 +21,8 @@ import sound
 import theme as th
 
 
-# ---------------------------------------------------------------- helpers
-def scrub(text):
-    """Never show your Windows username / folder paths on screen."""
-    text = str(text).replace(str(Path.home()), "~")
-    user = os.environ.get("USERNAME") or os.environ.get("USER")
-    if user and len(user) > 2:
-        text = text.replace(user, "user")
-    return text
-
-
-def label(text, kind=None):
-    l = QLabel(text)
-    if kind == "muted":
-        l.setProperty("muted", True)
-        l.setWordWrap(True)
-    elif kind:
-        l.setProperty(kind, True)
-    return l
-
-
-def header(title, sub):
-    box = QVBoxLayout()
-    box.setSpacing(2)
-    box.addWidget(label(title, "h1"))
-    box.addWidget(label(sub, "muted"))
-    return box
-
-
-def card(margins=(22, 18, 22, 18)):
-    f = QFrame()
-    f.setProperty("card", True)
-    lay = QVBoxLayout(f)
-    lay.setContentsMargins(*margins)
-    lay.setSpacing(10)
-    return f, lay
-
-
-def ghost(btn):
-    btn.setProperty("ghost", True)
-    return btn
-
-
-def row(*widgets, stretch=True):
-    w = QWidget()
-    lay = QHBoxLayout(w)
-    lay.setContentsMargins(0, 0, 0, 0)
-    lay.setSpacing(8)
-    for x in widgets:
-        if isinstance(x, int):
-            lay.addStretch(x)
-        else:
-            lay.addWidget(x)
-    if stretch:
-        lay.addStretch(1)
-    return w
-
-
-def dot_icon(color):
-    pm = QPixmap(32, 32)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QColor(color))
-    p.drawEllipse(4, 4, 24, 24)
-    p.end()
-    return QIcon(pm)
-
-
-def app_icon(accent):
-    pm = QPixmap(64, 64)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QColor(accent))
-    p.drawRoundedRect(4, 4, 56, 56, 12, 12)
-    p.setPen(QColor("white"))
-    f = QFont("Segoe UI", 28)
-    f.setBold(True)
-    p.setFont(f)
-    p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "C")
-    p.end()
-    return QIcon(pm)
+from pages import ExtraPages
+from widgets import app_icon, card, dot_icon, ghost, header, label, row, scrub
 
 
 class SfxFilter(QObject):
@@ -211,11 +129,11 @@ FLAG_PRESETS = {
     },
 }
 
-NAV = ("Play", "Mods", "Fast Flags", "Appearance", "Settings")
+NAV = ("Play", "Servers", "Avatar", "Mods", "Fast Flags", "Appearance", "Settings")
 
 
 # ---------------------------------------------------------------- main window
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow, ExtraPages):
     def __init__(self, cfg, launch_uri=None):
         super().__init__()
         self.cfg = cfg
@@ -225,6 +143,7 @@ class MainWindow(QMainWindow):
         self.clicker = sound.Clicker(cfg)
         self.thread = self.worker = self.watcher = None
         self.swatches, self.hex_edits = {}, {}
+        self._init_extra()
 
         self.setWindowTitle(config.APP_NAME)
         self.resize(1000, 660)
@@ -237,7 +156,8 @@ class MainWindow(QMainWindow):
         outer.setSpacing(0)
         outer.addWidget(self._sidebar())
         self.stack = QStackedWidget()
-        for build in (self._play, self._mods, self._flags, self._appearance, self._settings):
+        for build in (self._play, self._servers, self._avatar, self._mods, self._flags, self._appearance,
+                      self._settings):
             self.stack.addWidget(build())
         outer.addWidget(self.stack, 1)
 
@@ -258,6 +178,8 @@ class MainWindow(QMainWindow):
         self.apply_theme(self.cfg["theme"], save=False)
         self.nav_buttons[0].setChecked(True)
         self.refresh_play()
+        self._restore_session()
+        self._scan_recent_from_logs()
         if self.from_protocol:
             self.start_launch(self.launch_uri)
 
@@ -289,16 +211,18 @@ class MainWindow(QMainWindow):
         chip.setProperty("chip", True)
         cl = QHBoxLayout(chip)
         cl.setContentsMargins(10, 10, 10, 10)
-        av = QLabel("R")
-        av.setObjectName("avatar")
-        av.setFixedSize(36, 36)
-        av.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        cl.addWidget(av)
+        self.avatar_chip = QLabel("R")
+        self.avatar_chip.setObjectName("avatar")
+        self.avatar_chip.setFixedSize(36, 36)
+        self.avatar_chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        cl.addWidget(self.avatar_chip)
         col = QVBoxLayout()
         col.setSpacing(0)
-        col.addWidget(label("Roblox", "h2"))
-        self.chip_status = label("", "muted")
-        col.addWidget(self.chip_status)
+        self.acc_name = label("Not signed in", "h2")
+        col.addWidget(self.acc_name)
+        self.acc_btn = ghost(QPushButton("Sign in"))
+        self.acc_btn.clicked.connect(self._account_clicked)
+        col.addWidget(self.acc_btn)
         cl.addLayout(col, 1)
         lay.addWidget(chip)
         return sb
@@ -375,6 +299,8 @@ class MainWindow(QMainWindow):
         self.progress.setValue(0)
         lay.addWidget(self.progress)
 
+        lay.addWidget(self._recent_section("Jump back in", self._join_place))
+
         self.now_card, nl = card((16, 14, 16, 14))
         self.now_icon = QLabel()
         self.now_icon.setObjectName("gameicon")
@@ -399,7 +325,6 @@ class MainWindow(QMainWindow):
         v = self.cfg.get("current_version")
         installed = roblox.is_installed(v)
         self.version_lbl.setText(v if installed else "Not installed yet, first Play downloads it")
-        self.chip_status.setText("Running" if self.watcher else ("Installed" if installed else "Not installed"))
         is_default = roblox.protocols_registered()
         self.default_card.setVisible(os.name == "nt" and not is_default)
         self.default_lbl.setText("Chrome Blox is your default Roblox launcher." if is_default
@@ -411,6 +336,9 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, config.APP_NAME, scrub(e))
         self.refresh_play()
+
+    def _join_place(self, place_id):
+        self.start_launch(f"roblox://experiences/start?placeId={place_id}")
 
     def _join(self):
         m = re.search(r"(\d{3,})", self.join_edit.text())
@@ -488,6 +416,7 @@ class MainWindow(QMainWindow):
         else:
             self.now_icon.clear()
         self.now_card.show()
+        self._remember_game(g)
 
     def _roblox_closed(self):
         self.watcher = None

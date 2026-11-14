@@ -22,16 +22,20 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt pyinstaller
 
-      - name: Build exe
-        run: pyinstaller --noconfirm --onefile --windowed --name ChromeBlox --icon icon.ico --paths src src/main.py
+      # folder build (not one-file) so it opens fast: the sign-in browser is big
+      - name: Build
+        run: pyinstaller --noconfirm --onedir --windowed --name ChromeBlox --icon icon.ico --paths src src/main.py
+
+      - name: Zip
+        run: Compress-Archive -Path dist/ChromeBlox -DestinationPath ChromeBlox.zip
 
       - uses: actions/upload-artifact@v4
         with:
           name: ChromeBlox
-          path: dist/ChromeBlox.exe
+          path: dist/ChromeBlox
 
       - name: Publish release (when you push a v* tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/ChromeBlox.exe
+          files: ChromeBlox.zip
