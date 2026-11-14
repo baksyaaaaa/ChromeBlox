@@ -16,6 +16,7 @@ import config
 import mods
 import presence
 import roblox
+import shortcuts
 import sound
 import theme as th
 
@@ -801,6 +802,14 @@ class MainWindow(QMainWindow):
         lay.addWidget(c)
 
         c, cl = card()
+        cl.addWidget(label("Shortcuts", "h2"))
+        cl.addWidget(label("Chrome Blox makes these on first run. Deleted them? Make them again here.", "muted"))
+        sc = QPushButton("Make Desktop + Start Menu shortcuts")
+        sc.clicked.connect(self._make_shortcuts)
+        cl.addWidget(row(sc))
+        lay.addWidget(c)
+
+        c, cl = card()
         cl.addWidget(label("Discord", "h2"))
         cl.addWidget(label("Shows the game you're in on your Discord profile. Make an app at "
                            "discord.com/developers/applications (its name is what Discord shows, e.g. Roblox), "
@@ -835,6 +844,13 @@ class MainWindow(QMainWindow):
         lay.addWidget(c)
         lay.addStretch(1)
         return page
+
+    def _make_shortcuts(self):
+        try:
+            shortcuts.create()
+            QMessageBox.information(self, config.APP_NAME, "Shortcuts made on your Desktop and Start Menu.")
+        except Exception as e:
+            QMessageBox.warning(self, config.APP_NAME, scrub(e))
 
     def _reinstall(self):
         v = self.cfg.get("current_version")

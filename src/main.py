@@ -3,6 +3,7 @@ import sys
 from PySide6.QtWidgets import QApplication
 
 import config
+import shortcuts
 from ui import MainWindow
 
 
@@ -12,7 +13,9 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName(config.APP_NAME)
     app.setQuitOnLastWindowClosed(False)  # we quit ourselves (tray mode while Roblox runs)
-    win = MainWindow(config.Config(), launch_uri=uri)
+    cfg = config.Config()
+    shortcuts.first_run(cfg)
+    win = MainWindow(cfg, launch_uri=uri)
     win.show()
     sys.exit(app.exec())
 

@@ -23,7 +23,7 @@ jobs:
         run: pip install -r requirements.txt pyinstaller
 
       - name: Build exe
-        run: pyinstaller --noconfirm --onefile --windowed --name ChromeBlox --paths src src/main.py
+        run: pyinstaller --noconfirm --onefile --windowed --name ChromeBlox --icon icon.ico --paths src src/main.py
 
       - uses: actions/upload-artifact@v4
         with:
