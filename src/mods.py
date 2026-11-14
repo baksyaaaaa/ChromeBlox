@@ -63,8 +63,7 @@ def apply_mods(root, cfg):
     # custom font: every font family points at one file
     font = cfg.get("custom_font")
     if font and Path(font).is_file():
-        ext = Path(font).suffix.lower()
-        name = "CustomFont" + (ext if ext in (".ttf", ".otf") else ".ttf")
+        name = "CustomFont.ttf"   # Roblox only loads it under a .ttf name, even for .otf files (same as Bloxstrap)
         ov.put_file(Path("content/fonts") / name, font)
         fam_dir = root / FONT_FAMILIES
         if fam_dir.is_dir():

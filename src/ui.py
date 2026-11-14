@@ -508,9 +508,20 @@ class MainWindow(QMainWindow, ExtraPages):
         self._refresh_mod_labels()
 
     def _pick_font(self):
-        p, _ = QFileDialog.getOpenFileName(self, "Choose a font", "", "Fonts (*.ttf *.otf)")
-        if p:
-            self._set_mod_file("custom_font", self._store_copy(p, "font"))
+        p, _ = QFileDialog.getOpenFileName(self, "Choose a font", "", "Fonts (*.ttf *.otf *.ttc)")
+        if not p:
+            return
+        try:
+            with open(p, "rb") as f:
+                head = f.read(4)
+        except OSError:
+            head = b""
+        if head not in (b"\x00\x01\x00\x00", b"OTTO", b"ttcf", b"true"):
+            QMessageBox.warning(self, config.APP_NAME, "That file isn't a real font. Pick a .ttf or .otf font file.")
+            return
+        self._set_mod_file("custom_font", self._store_copy(p, "font"))
+        QMessageBox.information(self, config.APP_NAME, "Font set. Close Roblox fully, then launch it from "
+                                "Chrome Blox (or a Play button on roblox.com with Chrome Blox as default).")
 
     def _pick_cursor(self):
         p, _ = QFileDialog.getOpenFileName(self, "Choose a cursor", "", "PNG images (*.png)")
