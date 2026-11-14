@@ -4,19 +4,20 @@ import re
 import shutil
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QObject, QThread, Signal
+from PySide6.QtCore import QEvent, QObject, QThread, Qt, Signal
 from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QFileDialog, QFrame, QHBoxLayout,
-    QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QProgressBar, QPushButton,
-    QScrollArea, QSlider, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget,
+    QApplication, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QFileDialog, QFrame, QGridLayout,
+    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QProgressBar,
+    QPushButton, QScrollArea, QSlider, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget,
 )
 
 import config
 import mods
 import presence
 import roblox
-from sound import CUSTOM as CUSTOM_SOUND, Clicker
+import sound
+import theme as th
 
 
 # ---------------------------------------------------------------- helpers
@@ -29,89 +30,36 @@ def scrub(text):
     return text
 
 
-def rgba(hex_color, a):
-    c = QColor(hex_color)
-    return f"rgba({c.red()},{c.green()},{c.blue()},{a})"
+def label(text, kind=None):
+    l = QLabel(text)
+    if kind == "muted":
+        l.setProperty("muted", True)
+        l.setWordWrap(True)
+    elif kind:
+        l.setProperty(kind, True)
+    return l
 
 
-def make_icon(accent):
-    pm = QPixmap(64, 64)
-    pm.fill(Qt.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.Antialiasing)
-    p.setBrush(QColor(accent))
-    p.setPen(Qt.NoPen)
-    p.drawRoundedRect(4, 4, 56, 56, 12, 12)
-    p.setPen(QColor("white"))
-    f = QFont("Segoe UI", 30)
-    f.setBold(True)
-    p.setFont(f)
-    p.drawText(pm.rect(), Qt.AlignCenter, "C")
-    p.end()
-    return QIcon(pm)
+def header(title, sub):
+    box = QVBoxLayout()
+    box.setSpacing(2)
+    box.addWidget(label(title, "h1"))
+    box.addWidget(label(sub, "muted"))
+    return box
 
 
-def stylesheet(cfg):
-    acc, bg = cfg["accent"], cfg["background"]
-    return f"""
-    QWidget {{ color: #ecebf2; font-family: 'Segoe UI', 'Inter', sans-serif; font-size: 13px; }}
-    #Sidebar {{ background: rgba(0,0,0,0.28); border-right: 1px solid rgba(255,255,255,0.06); }}
-    #Logo {{ font-size: 17px; font-weight: 700; padding: 6px 4px 14px 4px; }}
-    QPushButton {{ background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15);
-                   border-radius: 6px; padding: 8px 14px; }}
-    QPushButton:hover {{ background: rgba(255,255,255,0.12); }}
-    QPushButton:pressed {{ background: rgba(255,255,255,0.04); }}
-    QPushButton:disabled {{ color: rgba(255,255,255,0.35); }}
-    QPushButton#Nav {{ text-align: left; padding: 10px 14px; background: rgba(255,255,255,0.03);
-                       border: 1px solid rgba(255,255,255,0.05); }}
-    QPushButton#Nav:checked {{ background: {rgba(acc, 0.18)}; border: 1px solid {rgba(acc, 0.45)}; }}
-    QPushButton#Play {{ background: {rgba(acc, 0.28)}; border: 1px solid {rgba(acc, 0.65)};
-                        font-size: 18px; font-weight: 600; padding: 14px 46px; }}
-    QPushButton#Play:hover {{ background: {rgba(acc, 0.40)}; }}
-    QPushButton#Swatch {{ min-width: 60px; }}
-    QLineEdit, QPlainTextEdit, QComboBox {{ background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 7px;
-        selection-background-color: {acc}; }}
-    QPlainTextEdit {{ font-family: 'Cascadia Mono', 'Consolas', monospace; }}
-    QComboBox QAbstractItemView {{ background: {bg}; border: 1px solid rgba(255,255,255,0.12); }}
-    QProgressBar {{ background: rgba(255,255,255,0.07); border: none; border-radius: 3px; }}
-    QProgressBar::chunk {{ background: {acc}; border-radius: 3px; }}
-    QCheckBox {{ spacing: 8px; }}
-    QCheckBox::indicator {{ width: 16px; height: 16px; border-radius: 4px;
-        border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.05); }}
-    QCheckBox::indicator:checked {{ background: {acc}; border-color: {acc}; }}
-    QSlider::groove:horizontal {{ height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; }}
-    QSlider::sub-page:horizontal {{ background: {acc}; border-radius: 2px; }}
-    QSlider::handle:horizontal {{ width: 14px; margin: -6px 0; border-radius: 7px; background: #ecebf2; }}
-    #Card {{ background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; }}
-    #H1 {{ font-size: 28px; font-weight: 700; }}
-    #H2 {{ font-size: 15px; font-weight: 600; }}
-    #Muted {{ color: rgba(236,235,242,0.55); }}
-    QScrollArea, QScrollArea > QWidget > QWidget {{ background: transparent; border: none; }}
-    QScrollBar:vertical {{ background: transparent; width: 8px; }}
-    QScrollBar::handle:vertical {{ background: rgba(255,255,255,0.15); border-radius: 4px; min-height: 30px; }}
-    QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; }}
-    QMenu {{ background: {bg}; border: 1px solid rgba(255,255,255,0.12); }}
-    QMenu::item:selected {{ background: {rgba(acc, 0.3)}; }}
-    """
-
-
-def card(title=None, text=None):
+def card(margins=(22, 18, 22, 18)):
     f = QFrame()
-    f.setObjectName("Card")
+    f.setProperty("card", True)
     lay = QVBoxLayout(f)
-    lay.setContentsMargins(16, 14, 16, 14)
-    lay.setSpacing(8)
-    if title:
-        t = QLabel(title)
-        t.setObjectName("H2")
-        lay.addWidget(t)
-    if text:
-        m = QLabel(text)
-        m.setObjectName("Muted")
-        m.setWordWrap(True)
-        lay.addWidget(m)
+    lay.setContentsMargins(*margins)
+    lay.setSpacing(10)
     return f, lay
+
+
+def ghost(btn):
+    btn.setProperty("ghost", True)
+    return btn
 
 
 def row(*widgets, stretch=True):
@@ -120,10 +68,55 @@ def row(*widgets, stretch=True):
     lay.setContentsMargins(0, 0, 0, 0)
     lay.setSpacing(8)
     for x in widgets:
-        lay.addWidget(x)
+        if isinstance(x, int):
+            lay.addStretch(x)
+        else:
+            lay.addWidget(x)
     if stretch:
         lay.addStretch(1)
     return w
+
+
+def dot_icon(color):
+    pm = QPixmap(32, 32)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(color))
+    p.drawEllipse(4, 4, 24, 24)
+    p.end()
+    return QIcon(pm)
+
+
+def app_icon(accent):
+    pm = QPixmap(64, 64)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(accent))
+    p.drawRoundedRect(4, 4, 56, 56, 12, 12)
+    p.setPen(QColor("white"))
+    f = QFont("Segoe UI", 28)
+    f.setBold(True)
+    p.setFont(f)
+    p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, "C")
+    p.end()
+    return QIcon(pm)
+
+
+class SfxFilter(QObject):
+    """Creamy click for every button and checkbox in the app."""
+    def __init__(self, clicker):
+        super().__init__()
+        self.clicker = clicker
+
+    def eventFilter(self, obj, ev):
+        if ev.type() == QEvent.Type.MouseButtonPress and isinstance(obj, (QPushButton, QCheckBox)) \
+                and obj.isEnabled():
+            self.clicker.play()
+        return False
 
 
 # ---------------------------------------------------------------- background
@@ -139,14 +132,20 @@ class Root(QWidget):
         self._pix = QPixmap(p) if p and Path(p).is_file() else None
         self.update()
 
+    def has_image(self):
+        return bool(self._pix and not self._pix.isNull())
+
     def paintEvent(self, e):
         p = QPainter(self)
-        p.fillRect(self.rect(), QColor(self.cfg["background"]))
-        if self._pix and not self._pix.isNull():
-            s = self._pix.scaled(self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        bg = QColor(th.clean_theme(self.cfg.get("theme"))["bg"])
+        p.fillRect(self.rect(), bg)
+        if self.has_image():
+            s = self._pix.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                                 Qt.TransformationMode.SmoothTransformation)
             p.drawPixmap(0, 0, s, (s.width() - self.width()) // 2, (s.height() - self.height()) // 2,
                          self.width(), self.height())
-            p.fillRect(self.rect(), QColor(0, 0, 0, 150))
+            bg.setAlpha(120)
+            p.fillRect(self.rect(), bg)
 
 
 # ---------------------------------------------------------------- worker
@@ -162,7 +161,7 @@ class LaunchWorker(QObject):
 
     def run(self):
         try:
-            self.status.emit("Checking for Roblox updates…")
+            self.status.emit("Checking for Roblox updates...")
             try:
                 version = roblox.latest_version()
             except Exception:
@@ -178,9 +177,9 @@ class LaunchWorker(QObject):
             if not self.launch:
                 self.done.emit(None)
                 return
-            self.status.emit("Applying mods…")
+            self.status.emit("Applying mods...")
             mods.apply_mods(folder, self.cfg)
-            self.status.emit("Starting Roblox…")
+            self.status.emit("Starting Roblox...")
             self.done.emit(roblox.launch(folder, self.uri, self.cfg.get("multi_instance", False)))
         except Exception as e:
             self.failed.emit(scrub(e))
@@ -194,7 +193,7 @@ FLAG_PRESETS = {
         "Vulkan": {"FFlagDebugGraphicsPreferVulkan": "True"},
         "OpenGL": {"FFlagDebugGraphicsPreferOpenGL": "True"},
     },
-    "Anti-aliasing (MSAA)": {
+    "Anti-aliasing": {
         "Automatic": {},
         "Off": {"FIntDebugForceMSAASamples": "0"},
         "1x": {"FIntDebugForceMSAASamples": "1"},
@@ -211,161 +210,182 @@ FLAG_PRESETS = {
     },
 }
 
+NAV = ("Play", "Mods", "Fast Flags", "Appearance", "Settings")
+
 
 # ---------------------------------------------------------------- main window
 class MainWindow(QMainWindow):
     def __init__(self, cfg, launch_uri=None):
         super().__init__()
         self.cfg = cfg
+        self.cfg["theme"] = th.clean_theme(cfg.get("theme"))
         self.launch_uri = launch_uri
         self.from_protocol = launch_uri is not None
-        self.clicker = Clicker(cfg)
-        self.thread = None
-        self.worker = None
-        self.watcher = None
+        self.clicker = sound.Clicker(cfg)
+        self.thread = self.worker = self.watcher = None
+        self.swatches, self.hex_edits = {}, {}
 
         self.setWindowTitle(config.APP_NAME)
-        self.resize(1000, 640)
-        self.setMinimumSize(860, 560)
+        self.resize(1000, 660)
+        self.setMinimumSize(880, 580)
 
         self.root = Root(cfg)
+        self.setCentralWidget(self.root)
         outer = QHBoxLayout(self.root)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-
-        side = QWidget()
-        side.setObjectName("Sidebar")
-        side.setFixedWidth(200)
-        sl = QVBoxLayout(side)
-        sl.setContentsMargins(14, 18, 14, 14)
-        sl.setSpacing(6)
-        logo = QLabel(config.APP_NAME)
-        logo.setObjectName("Logo")
-        sl.addWidget(logo)
-
+        outer.addWidget(self._sidebar())
         self.stack = QStackedWidget()
-        self.nav = QButtonGroup(self)
-        self.nav.setExclusive(True)
-        pages = [("Home", self._home()), ("Mods", self._mods()), ("Fast Flags", self._flags()),
-                 ("Look", self._look()), ("Settings", self._settings())]
-        for i, (name, page) in enumerate(pages):
-            b = QPushButton(name)
-            b.setObjectName("Nav")
-            b.setCheckable(True)
-            b.setChecked(i == 0)
-            self.nav.addButton(b, i)
-            sl.addWidget(b)
-            self.stack.addWidget(page)
-        self.nav.idClicked.connect(self.stack.setCurrentIndex)
-        sl.addStretch(1)
-        ver = QLabel(f"v{config.APP_VERSION}")
-        ver.setObjectName("Muted")
-        sl.addWidget(ver)
-
-        outer.addWidget(side)
+        for build in (self._play, self._mods, self._flags, self._appearance, self._settings):
+            self.stack.addWidget(build())
         outer.addWidget(self.stack, 1)
-        self.setCentralWidget(self.root)
 
         # tray (used while Roblox runs in the background)
         self.tray = QSystemTrayIcon(self)
         menu = QMenu()
-        a_show = QAction("Show", self)
-        a_show.triggered.connect(self._restore)
-        a_quit = QAction("Quit", self)
-        a_quit.triggered.connect(self._quit)
-        menu.addAction(a_show)
-        menu.addAction(a_quit)
+        for text, fn in (("Show", self._restore), ("Quit", self._quit)):
+            a = QAction(text, self)
+            a.triggered.connect(fn)
+            menu.addAction(a)
         self.tray.setContextMenu(menu)
-        self.tray.activated.connect(lambda r: self._restore() if r == QSystemTrayIcon.Trigger else None)
+        self.tray.activated.connect(
+            lambda r: self._restore() if r == QSystemTrayIcon.ActivationReason.Trigger else None)
 
-        for b in self.findChildren(QPushButton):
-            b.pressed.connect(self.clicker.play)
-        for c in self.findChildren(QCheckBox):
-            c.clicked.connect(self.clicker.play)
+        self._sfx = SfxFilter(self.clicker)
+        QApplication.instance().installEventFilter(self._sfx)
 
-        self.apply_style()
-        self.refresh_home()
+        self.apply_theme(self.cfg["theme"], save=False)
+        self.nav_buttons[0].setChecked(True)
+        self.refresh_play()
         if self.from_protocol:
             self.start_launch(self.launch_uri)
 
-    # ------------------------------------------------ layout helpers
-    def _page(self, title):
+    # ------------------------------------------------ shell
+    def _sidebar(self):
+        sb = QWidget()
+        sb.setObjectName("sidebar")
+        sb.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        sb.setFixedWidth(220)
+        lay = QVBoxLayout(sb)
+        lay.setContentsMargins(14, 18, 14, 14)
+        lay.setSpacing(4)
+        lay.addWidget(label(config.APP_NAME, "brand"))
+        lay.addWidget(label("Roblox launcher", "muted"))
+        lay.addSpacing(14)
+        self.nav_group = QButtonGroup(self)
+        self.nav_buttons = []
+        for i, name in enumerate(NAV):
+            b = QPushButton(name)
+            b.setProperty("nav", True)
+            b.setCheckable(True)
+            b.clicked.connect(lambda _=False, i=i: self.stack.setCurrentIndex(i))
+            self.nav_group.addButton(b)
+            self.nav_buttons.append(b)
+            lay.addWidget(b)
+        lay.addStretch(1)
+
+        chip = QFrame()
+        chip.setProperty("chip", True)
+        cl = QHBoxLayout(chip)
+        cl.setContentsMargins(10, 10, 10, 10)
+        av = QLabel("R")
+        av.setObjectName("avatar")
+        av.setFixedSize(36, 36)
+        av.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        cl.addWidget(av)
+        col = QVBoxLayout()
+        col.setSpacing(0)
+        col.addWidget(label("Roblox", "h2"))
+        self.chip_status = label("", "muted")
+        col.addWidget(self.chip_status)
+        cl.addLayout(col, 1)
+        lay.addWidget(chip)
+        return sb
+
+    def _page(self, title, sub):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         inner = QWidget()
         lay = QVBoxLayout(inner)
-        lay.setContentsMargins(32, 28, 32, 28)
-        lay.setSpacing(14)
-        t = QLabel(title)
-        t.setObjectName("H1")
-        lay.addWidget(t)
+        lay.setContentsMargins(32, 28, 32, 24)
+        lay.setSpacing(16)
+        lay.addLayout(header(title, sub))
         scroll.setWidget(inner)
         return scroll, lay
 
-    def apply_style(self):
-        self.setStyleSheet(stylesheet(self.cfg))
-        icon = make_icon(self.cfg["accent"])
+    def apply_theme(self, theme, save=True):
+        theme = th.clean_theme(theme)
+        self.cfg["theme"] = theme
+        self.root.reload()
+        QApplication.instance().setStyleSheet(th.build_qss(theme, self.root.has_image()))
+        icon = app_icon(theme["accent"])
         self.setWindowIcon(icon)
         self.tray.setIcon(icon)
-        self.root.reload()
-        if hasattr(self, "accent_btn"):
-            self.accent_btn.setStyleSheet(f"background:{self.cfg['accent']};")
-            self.bg_btn.setStyleSheet(f"background:{self.cfg['background']};")
+        for k, sw in self.swatches.items():
+            sw.setStyleSheet(f"background: {theme[k]}; border: 2px solid "
+                             f"{th.mix(theme['surface'], theme['text'], 0.35)}; border-radius: 8px;")
+            self.hex_edits[k].setText(theme[k])
+        if save:
+            self.cfg.save()
 
-    def _save(self):
-        self.cfg.save()
+    # ------------------------------------------------ play
+    def _play(self):
+        page, lay = self._page("Play", "Jump into Roblox, or join any game by its link.")
 
-    # ------------------------------------------------ home
-    def _home(self):
-        page, lay = self._page("Roblox")
-        self.version_lbl = QLabel()
-        self.version_lbl.setObjectName("Muted")
-        lay.addWidget(self.version_lbl)
-
-        self.default_card, dl = card(None, "Chrome Blox isn't your default Roblox launcher yet, so Play on the "
-                                           "Roblox website still opens the normal one.")
+        self.default_card, dl = card()
+        dl.addWidget(label("Not your default launcher yet", "h2"))
+        dl.addWidget(label("Play buttons on roblox.com still open the normal Roblox. "
+                           "Make them open Chrome Blox instead.", "muted"))
         b = QPushButton("Set as default")
         b.clicked.connect(self._set_default)
         dl.addWidget(row(b))
         lay.addWidget(self.default_card)
 
-        self.play_btn = QPushButton("Play")
-        self.play_btn.setObjectName("Play")
-        self.play_btn.clicked.connect(lambda: self.start_launch(None))
-        lay.addSpacing(6)
-        lay.addWidget(row(self.play_btn))
-
+        c, cl = card()
+        g = QGridLayout()
+        g.setHorizontalSpacing(14)
+        g.setVerticalSpacing(14)
+        g.setColumnStretch(1, 1)
+        g.addWidget(label("Join game", "h2"), 0, 0)
         self.join_edit = QLineEdit()
-        self.join_edit.setPlaceholderText("Place ID or game link")
-        self.join_edit.setMinimumWidth(320)
+        self.join_edit.setPlaceholderText("Paste a game link or place ID")
         self.join_edit.returnPressed.connect(self._join)
+        g.addWidget(self.join_edit, 0, 1)
         self.join_btn = QPushButton("Join")
         self.join_btn.clicked.connect(self._join)
-        lay.addWidget(row(self.join_edit, self.join_btn))
+        g.addWidget(self.join_btn, 0, 2)
+        g.addWidget(label("Version", "h2"), 1, 0)
+        self.version_lbl = label("", "muted")
+        g.addWidget(self.version_lbl, 1, 1, 1, 2)
+        cl.addLayout(g)
+        lay.addWidget(c)
 
-        self.status_lbl = QLabel("Ready")
-        self.status_lbl.setObjectName("Muted")
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 100)
-        self.progress.setTextVisible(False)
-        self.progress.setFixedHeight(6)
-        self.progress.hide()
+        self.play_btn = QPushButton("Play")
+        self.play_btn.setProperty("primary", True)
+        self.play_btn.setMinimumHeight(52)
+        self.play_btn.clicked.connect(lambda: self.start_launch(None))
+        lay.addWidget(self.play_btn)
+        self.status_lbl = label("Ready", "muted")
         lay.addWidget(self.status_lbl)
+        self.progress = QProgressBar()
+        self.progress.setTextVisible(False)
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
         lay.addWidget(self.progress)
 
-        self.now_card, nl = card()
+        self.now_card, nl = card((16, 14, 16, 14))
         self.now_icon = QLabel()
+        self.now_icon.setObjectName("gameicon")
         self.now_icon.setFixedSize(64, 64)
-        self.now_name = QLabel()
-        self.now_name.setObjectName("H2")
-        self.now_sub = QLabel()
-        self.now_sub.setObjectName("Muted")
         txt = QWidget()
         tl = QVBoxLayout(txt)
-        tl.setContentsMargins(0, 0, 0, 0)
-        small = QLabel("NOW PLAYING")
-        small.setObjectName("Muted")
-        tl.addWidget(small)
+        tl.setContentsMargins(4, 0, 0, 0)
+        tl.setSpacing(2)
+        tl.addWidget(label("NOW PLAYING", "small"))
+        self.now_name = label("", "h2")
+        self.now_sub = label("", "muted")
+        self.now_sub.setWordWrap(False)
         tl.addWidget(self.now_name)
         tl.addWidget(self.now_sub)
         nl.addWidget(row(self.now_icon, txt))
@@ -374,25 +394,27 @@ class MainWindow(QMainWindow):
         lay.addStretch(1)
         return page
 
-    def refresh_home(self):
+    def refresh_play(self):
         v = self.cfg.get("current_version")
-        self.version_lbl.setText(v if roblox.is_installed(v) else "Not installed yet, first Play downloads it")
-        self.default_card.setVisible(os.name == "nt" and not roblox.protocols_registered())
-        if hasattr(self, "default_lbl"):
-            self.default_lbl.setText("Chrome Blox is your default Roblox launcher." if roblox.protocols_registered()
-                                     else "Not the default launcher right now.")
+        installed = roblox.is_installed(v)
+        self.version_lbl.setText(v if installed else "Not installed yet, first Play downloads it")
+        self.chip_status.setText("Running" if self.watcher else ("Installed" if installed else "Not installed"))
+        is_default = roblox.protocols_registered()
+        self.default_card.setVisible(os.name == "nt" and not is_default)
+        self.default_lbl.setText("Chrome Blox is your default Roblox launcher." if is_default
+                                 else "Not the default launcher right now.")
 
     def _set_default(self):
         try:
             roblox.register_protocols()
         except Exception as e:
             QMessageBox.warning(self, config.APP_NAME, scrub(e))
-        self.refresh_home()
+        self.refresh_play()
 
     def _join(self):
         m = re.search(r"(\d{3,})", self.join_edit.text())
         if not m:
-            self.status_lbl.setText("Paste a place ID or a roblox.com/games/… link")
+            self.status_lbl.setText("Paste a place ID or a roblox.com/games/... link")
             return
         self.start_launch(f"roblox://experiences/start?placeId={m.group(1)}")
 
@@ -406,7 +428,6 @@ class MainWindow(QMainWindow):
             return
         self._busy(True)
         self.progress.setValue(0)
-        self.progress.show()
         self.thread = QThread()
         self.worker = LaunchWorker(self.cfg, uri, launch)
         self.worker.moveToThread(self.thread)
@@ -425,15 +446,16 @@ class MainWindow(QMainWindow):
         self.thread.deleteLater()
         self.worker = self.thread = None
         self._busy(False)
-        self.progress.hide()
-        self.refresh_home()
+        self.refresh_play()
 
     def _failed(self, msg):
         self.status_lbl.setText("Something went wrong")
+        self.progress.setValue(0)
         self._restore()
         QMessageBox.warning(self, config.APP_NAME, msg)
 
     def _launched(self, proc):
+        self.progress.setValue(100)
         if proc is None:
             self.status_lbl.setText("Roblox is installed and up to date")
             return
@@ -460,7 +482,8 @@ class MainWindow(QMainWindow):
         self.now_sub.setText("  ·  ".join(bits))
         pm = QPixmap()
         if g.get("icon") and pm.loadFromData(g["icon"]):
-            self.now_icon.setPixmap(pm.scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.now_icon.setPixmap(pm.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio,
+                                              Qt.TransformationMode.SmoothTransformation))
         else:
             self.now_icon.clear()
         self.now_card.show()
@@ -469,6 +492,8 @@ class MainWindow(QMainWindow):
         self.watcher = None
         self.now_card.hide()
         self.status_lbl.setText("Ready")
+        self.progress.setValue(0)
+        self.refresh_play()
         if self.isHidden():
             self._quit()
 
@@ -488,113 +513,112 @@ class MainWindow(QMainWindow):
             e.ignore()
             self.tray.show()
             self.hide()
-            self.tray.showMessage(config.APP_NAME, "Still running while Roblox is open.", QSystemTrayIcon.NoIcon, 2500)
+            self.tray.showMessage(config.APP_NAME, "Still running while Roblox is open.",
+                                  QSystemTrayIcon.MessageIcon.NoIcon, 2500)
         else:
             e.accept()
             self._quit()
 
     # ------------------------------------------------ mods
     def _mods(self):
-        page, lay = self._page("Mods")
-        c, cl = card("Mods folder", "Anything in here gets copied over Roblox's files every launch, using the same "
-                                    "folder layout. Example: put the old oof sound at content/sounds/ouch.ogg. "
-                                    "Delete a file and it goes back to normal.")
-        b = QPushButton("Open mods folder")
-        b.clicked.connect(lambda: os.startfile(str(config.MODS)) if os.name == "nt" else None)
-        cl.addWidget(row(b))
-        lay.addWidget(c)
+        page, lay = self._page("Mods", "Change how Roblox looks and sounds on your PC only. Applies next launch.")
 
-        c, cl = card("Custom font", "Swaps every in-game font for one .ttf or .otf file.")
-        self.font_lbl = QLabel()
-        self.font_lbl.setObjectName("Muted")
-        pick = QPushButton("Choose font…")
+        c, cl = card()
+        cl.addWidget(label("Custom font", "h2"))
+        cl.addWidget(label("Swap every in-game font for one .ttf or .otf file.", "muted"))
+        self.font_lbl = label("", "muted")
+        pick = QPushButton("Choose font...")
         pick.clicked.connect(self._pick_font)
-        reset = QPushButton("Reset")
+        reset = ghost(QPushButton("Reset"))
         reset.clicked.connect(lambda: self._set_mod_file("custom_font", ""))
         cl.addWidget(self.font_lbl)
         cl.addWidget(row(pick, reset))
         lay.addWidget(c)
 
-        c, cl = card("Custom cursor", "Use any PNG as your mouse cursor in game (64×64 looks best).")
-        self.cursor_lbl = QLabel()
-        self.cursor_lbl.setObjectName("Muted")
-        pick = QPushButton("Choose PNG…")
+        c, cl = card()
+        cl.addWidget(label("Custom cursor", "h2"))
+        cl.addWidget(label("Use any PNG as your mouse cursor in game (64×64 looks best).", "muted"))
+        self.cursor_lbl = label("", "muted")
+        pick = QPushButton("Choose PNG...")
         pick.clicked.connect(self._pick_cursor)
-        reset = QPushButton("Reset")
+        reset = ghost(QPushButton("Reset"))
         reset.clicked.connect(lambda: self._set_mod_file("custom_cursor", ""))
         cl.addWidget(self.cursor_lbl)
         cl.addWidget(row(pick, reset))
         lay.addWidget(c)
 
-        note = QLabel("Mod changes apply the next time you launch Roblox.")
-        note.setObjectName("Muted")
-        lay.addWidget(note)
+        c, cl = card()
+        cl.addWidget(label("Mods folder", "h2"))
+        cl.addWidget(label("Files in here replace Roblox's own files every launch (same folder layout). "
+                           "Example: an old oof sound at content/sounds/ouch.ogg. Delete a file to undo it.",
+                           "muted"))
+        b = QPushButton("Open mods folder")
+        b.clicked.connect(lambda: os.startfile(str(config.MODS)) if os.name == "nt" else None)
+        cl.addWidget(row(b))
+        lay.addWidget(c)
         lay.addStretch(1)
         self._refresh_mod_labels()
         return page
 
     def _refresh_mod_labels(self):
         f, c = self.cfg.get("custom_font"), self.cfg.get("custom_cursor")
-        self.font_lbl.setText(f"Using: {Path(f).name}" if f else "Using Roblox's fonts")
-        self.cursor_lbl.setText(f"Using: {Path(c).name}" if c else "Using Roblox's cursor")
+        self.font_lbl.setText("Using your font" if f else "Using Roblox's fonts")
+        self.cursor_lbl.setText("Using your cursor" if c else "Using Roblox's cursor")
 
     def _store_copy(self, src, name):
-        dest_dir = config.BASE / "assets"
-        dest_dir.mkdir(exist_ok=True)
-        dest = dest_dir / (name + Path(src).suffix.lower())
+        d = config.BASE / "assets"
+        d.mkdir(exist_ok=True)
+        dest = d / (name + Path(src).suffix.lower())
         shutil.copy2(src, dest)
         return str(dest)
 
     def _set_mod_file(self, key, value):
         self.cfg[key] = value
-        self._save()
+        self.cfg.save()
         self._refresh_mod_labels()
 
     def _pick_font(self):
         p, _ = QFileDialog.getOpenFileName(self, "Choose a font", "", "Fonts (*.ttf *.otf)")
         if p:
-            stored = self._store_copy(p, "font")
-            self._set_mod_file("custom_font", stored)
-            self.font_lbl.setText(f"Using: {Path(p).name}")
+            self._set_mod_file("custom_font", self._store_copy(p, "font"))
 
     def _pick_cursor(self):
         p, _ = QFileDialog.getOpenFileName(self, "Choose a cursor", "", "PNG images (*.png)")
         if p:
-            stored = self._store_copy(p, "cursor")
-            self._set_mod_file("custom_cursor", stored)
-            self.cursor_lbl.setText(f"Using: {Path(p).name}")
+            self._set_mod_file("custom_cursor", self._store_copy(p, "cursor"))
 
     # ------------------------------------------------ fast flags
     def _flags(self):
-        page, lay = self._page("Fast Flags")
-        c, cl = card(None, "Roblox only accepts flags on their allowlist now, so anything else here just gets "
-                           "ignored by the game. These apply next launch.")
-        lay.addWidget(c)
+        page, lay = self._page("Fast Flags", "Engine tweaks. Roblox ignores any flag that isn't on its allowlist.")
 
-        c, cl = card("Quick settings")
+        c, cl = card()
+        g = QGridLayout()
+        g.setHorizontalSpacing(14)
+        g.setVerticalSpacing(12)
+        g.setColumnStretch(2, 1)
         self.preset_boxes = {}
-        for group, options in FLAG_PRESETS.items():
-            lbl = QLabel(group)
-            lbl.setMinimumWidth(170)
+        for i, (group, options) in enumerate(FLAG_PRESETS.items()):
+            g.addWidget(label(group, "h2"), i, 0)
             box = QComboBox()
             box.addItems(list(options))
-            box.setMinimumWidth(160)
+            box.setMinimumWidth(180)
             box.setCurrentText(self._detect_preset(group))
-            box.currentTextChanged.connect(lambda val, g=group: self._apply_preset(g, val))
+            box.currentTextChanged.connect(lambda val, gr=group: self._apply_preset(gr, val))
             self.preset_boxes[group] = box
-            cl.addWidget(row(lbl, box))
+            g.addWidget(box, i, 1)
+        cl.addLayout(g)
         lay.addWidget(c)
 
-        c, cl = card("All flags (JSON)")
+        c, cl = card()
+        cl.addWidget(label("All flags (JSON)", "h2"))
         self.flags_edit = QPlainTextEdit()
-        self.flags_edit.setMinimumHeight(180)
+        self.flags_edit.setMinimumHeight(170)
         self.flags_edit.setPlainText(json.dumps(self.cfg.get("fflags") or {}, indent=2))
         save = QPushButton("Save")
         save.clicked.connect(self._save_flags)
-        clear = QPushButton("Reset all")
+        clear = ghost(QPushButton("Reset all"))
         clear.clicked.connect(self._clear_flags)
-        self.flags_msg = QLabel()
-        self.flags_msg.setObjectName("Muted")
+        self.flags_msg = label("", "muted")
         cl.addWidget(self.flags_edit)
         cl.addWidget(row(save, clear, self.flags_msg))
         lay.addWidget(c)
@@ -615,7 +639,7 @@ class MainWindow(QMainWindow):
                 flags.pop(k, None)
         flags.update(FLAG_PRESETS[group][value])
         self.cfg["fflags"] = flags
-        self._save()
+        self.cfg.save()
         self.flags_edit.setPlainText(json.dumps(flags, indent=2))
         self.flags_msg.setText("Saved")
 
@@ -628,7 +652,7 @@ class MainWindow(QMainWindow):
             self.flags_msg.setText(f"Not valid JSON: {e}")
             return
         self.cfg["fflags"] = data
-        self._save()
+        self.cfg.save()
         for g, box in self.preset_boxes.items():
             box.blockSignals(True)
             box.setCurrentText(self._detect_preset(g))
@@ -639,51 +663,73 @@ class MainWindow(QMainWindow):
         self.flags_edit.setPlainText("{}")
         self._save_flags()
 
-    # ------------------------------------------------ look
-    def _look(self):
-        page, lay = self._page("Look")
-        c, cl = card("Colors")
-        self.accent_btn = QPushButton()
-        self.accent_btn.setObjectName("Swatch")
-        self.accent_btn.clicked.connect(lambda: self._pick_color("accent"))
-        self.bg_btn = QPushButton()
-        self.bg_btn.setObjectName("Swatch")
-        self.bg_btn.clicked.connect(lambda: self._pick_color("background"))
-        a = QLabel("Accent")
-        a.setMinimumWidth(110)
-        bgl = QLabel("Background")
-        bgl.setMinimumWidth(110)
-        cl.addWidget(row(a, self.accent_btn))
-        cl.addWidget(row(bgl, self.bg_btn))
-        reset = QPushButton("Reset colors")
-        reset.clicked.connect(self._reset_colors)
-        cl.addWidget(row(reset))
+    # ------------------------------------------------ appearance
+    def _appearance(self):
+        page, lay = self._page("Appearance", "Recolor the whole launcher. Changes apply instantly and are saved.")
+
+        c, cl = card()
+        cl.addWidget(label("Presets", "h2"))
+        pg = QGridLayout()
+        pg.setSpacing(8)
+        for i, (name, t) in enumerate(th.PRESETS.items()):
+            b = QPushButton(name)
+            b.setIcon(dot_icon(t["accent"]))
+            b.clicked.connect(lambda _=False, t=t: self.apply_theme(dict(t)))
+            pg.addWidget(b, i // 4, i % 4)
+        cl.addLayout(pg)
         lay.addWidget(c)
 
-        c, cl = card("Background image")
-        pick = QPushButton("Choose image…")
+        c, cl = card()
+        g = QGridLayout()
+        g.setHorizontalSpacing(14)
+        g.setVerticalSpacing(12)
+        g.addWidget(label("Custom colors", "h2"), 0, 0, 1, 4)
+        for i, (key, title) in enumerate((("bg", "Background"), ("surface", "Cards & sidebar"),
+                                          ("accent", "Accent"), ("text", "Text")), start=1):
+            g.addWidget(QLabel(title), i, 0)
+            sw = QPushButton()
+            sw.setFixedSize(54, 32)
+            sw.clicked.connect(lambda _=False, k=key: self._pick_color(k))
+            g.addWidget(sw, i, 1)
+            he = QLineEdit()
+            he.setMaximumWidth(110)
+            he.editingFinished.connect(lambda k=key: self._hex_edited(k))
+            g.addWidget(he, i, 2)
+            self.swatches[key], self.hex_edits[key] = sw, he
+        g.setColumnStretch(3, 1)
+        reset = ghost(QPushButton("Reset to default"))
+        reset.clicked.connect(lambda: self.apply_theme(dict(th.DEFAULT_THEME)))
+        g.addWidget(reset, 5, 0, 1, 2)
+        cl.addLayout(g)
+        lay.addWidget(c)
+
+        c, cl = card()
+        cl.addWidget(label("Background image", "h2"))
+        cl.addWidget(label("Shows behind everything, cards go see-through.", "muted"))
+        pick = QPushButton("Choose image...")
         pick.clicked.connect(self._pick_bg)
-        clear = QPushButton("Remove")
-        clear.clicked.connect(lambda: (self.cfg.__setitem__("bg_image", ""), self._save(), self.apply_style()))
+        clear = ghost(QPushButton("Remove"))
+        clear.clicked.connect(self._clear_bg)
         cl.addWidget(row(pick, clear))
         lay.addWidget(c)
 
-        c, cl = card("Click sound", "Same sound for every button, play and errors included.")
-        on = QCheckBox("Play click sound")
+        c, cl = card()
+        cl.addWidget(label("Click sound", "h2"))
+        on = QCheckBox("Play the click sound")
         on.setChecked(self.cfg.get("click_sound", True))
-        on.toggled.connect(lambda v: (self.cfg.__setitem__("click_sound", v), self._save()))
+        on.toggled.connect(lambda v: (self.cfg.__setitem__("click_sound", v), self.cfg.save()))
         cl.addWidget(on)
-        vol = QSlider(Qt.Horizontal)
+        vol = QSlider(Qt.Orientation.Horizontal)
         vol.setRange(0, 100)
         vol.setValue(int(self.cfg.get("volume", 0.6) * 100))
-        vol.setFixedWidth(220)
+        vol.setFixedWidth(240)
         vol.sliderReleased.connect(lambda: self._set_volume(vol.value()))
         vl = QLabel("Volume")
-        vl.setMinimumWidth(110)
+        vl.setMinimumWidth(80)
         cl.addWidget(row(vl, vol))
-        own = QPushButton("Use my own .wav…")
+        own = QPushButton("Use my own sound...")
         own.clicked.connect(self._pick_sound)
-        back = QPushButton("Default sound")
+        back = ghost(QPushButton("Creamy default"))
         back.clicked.connect(lambda: self._use_custom_sound(False))
         cl.addWidget(row(own, back))
         lay.addWidget(c)
@@ -691,84 +737,99 @@ class MainWindow(QMainWindow):
         return page
 
     def _pick_color(self, key):
-        col = QColorDialog.getColor(QColor(self.cfg[key]), self, "Pick a color")
+        col = QColorDialog.getColor(QColor(self.cfg["theme"][key]), self, f"Pick {key} color")
         if col.isValid():
-            self.cfg[key] = col.name()
-            self._save()
-            self.apply_style()
+            self.apply_theme({**self.cfg["theme"], key: col.name()})
 
-    def _reset_colors(self):
-        self.cfg["accent"] = config.DEFAULTS["accent"]
-        self.cfg["background"] = config.DEFAULTS["background"]
-        self._save()
-        self.apply_style()
+    def _hex_edited(self, key):
+        txt = self.hex_edits[key].text().strip()
+        if not txt.startswith("#"):
+            txt = "#" + txt
+        if QColor(txt).isValid():
+            self.apply_theme({**self.cfg["theme"], key: QColor(txt).name()})
+        else:
+            self.hex_edits[key].setText(self.cfg["theme"][key])
 
     def _pick_bg(self):
-        p, _ = QFileDialog.getOpenFileName(self, "Choose a background", "", "Images (*.png *.jpg *.jpeg *.webp *.bmp)")
+        p, _ = QFileDialog.getOpenFileName(self, "Choose a background", "",
+                                           "Images (*.png *.jpg *.jpeg *.webp *.bmp)")
         if p:
             self.cfg["bg_image"] = self._store_copy(p, "background")
-            self._save()
-            self.apply_style()
+            self.apply_theme(self.cfg["theme"])
+
+    def _clear_bg(self):
+        self.cfg["bg_image"] = ""
+        self.apply_theme(self.cfg["theme"])
 
     def _set_volume(self, v):
         self.cfg["volume"] = v / 100
-        self._save()
+        self.cfg.save()
         self.clicker.rebuild()
         self.clicker.play()
 
     def _pick_sound(self):
-        p, _ = QFileDialog.getOpenFileName(self, "Choose a click sound", "", "WAV sound (*.wav)")
-        if p:
-            shutil.copy2(p, CUSTOM_SOUND)
-            self._use_custom_sound(True)
+        p, _ = QFileDialog.getOpenFileName(self, "Choose a click sound", "", "Sounds (*.wav *.mp3 *.ogg *.flac)")
+        if not p:
+            return
+        try:
+            sound.import_sound(p)
+        except RuntimeError as e:
+            QMessageBox.warning(self, config.APP_NAME, scrub(e))
+            return
+        self._use_custom_sound(True)
 
     def _use_custom_sound(self, on):
         self.cfg["custom_sound"] = on
-        self._save()
+        self.cfg.save()
         self.clicker.rebuild()
         self.clicker.play()
 
     # ------------------------------------------------ settings
     def _settings(self):
-        page, lay = self._page("Settings")
-        c, cl = card("Default launcher", "When Chrome Blox is the default, Play buttons on roblox.com open it. "
-                                         "If the normal Roblox installer runs again it can steal this back, just "
-                                         "press the button again.")
-        self.default_lbl = QLabel()
-        self.default_lbl.setObjectName("Muted")
+        page, lay = self._page("Settings", "Launcher, Discord and Roblox options.")
+
+        c, cl = card()
+        cl.addWidget(label("Default launcher", "h2"))
+        cl.addWidget(label("When Chrome Blox is the default, Play buttons on roblox.com open it. If the normal "
+                           "Roblox installer runs again it can take this back, just press the button again.",
+                           "muted"))
+        self.default_lbl = label("", "muted")
         b = QPushButton("Set Chrome Blox as default")
         b.clicked.connect(self._set_default)
         cl.addWidget(self.default_lbl)
         cl.addWidget(row(b))
         lay.addWidget(c)
 
-        c, cl = card("Discord", "Shows the game you're playing on your Discord profile. Make an app at "
-                                "discord.com/developers/applications (name it whatever you want Discord to show, "
-                                "e.g. Roblox), then paste its Application ID here.")
+        c, cl = card()
+        cl.addWidget(label("Discord", "h2"))
+        cl.addWidget(label("Shows the game you're in on your Discord profile. Make an app at "
+                           "discord.com/developers/applications (its name is what Discord shows, e.g. Roblox), "
+                           "then paste its Application ID here.", "muted"))
         rpc = QCheckBox("Show what I'm playing on Discord")
         rpc.setChecked(self.cfg.get("discord_rpc", False))
-        rpc.toggled.connect(lambda v: (self.cfg.__setitem__("discord_rpc", v), self._save()))
+        rpc.toggled.connect(lambda v: (self.cfg.__setitem__("discord_rpc", v), self.cfg.save()))
         app_id = QLineEdit(self.cfg.get("discord_app_id", ""))
         app_id.setPlaceholderText("Application ID")
-        app_id.setFixedWidth(260)
+        app_id.setFixedWidth(280)
         app_id.editingFinished.connect(lambda: (self.cfg.__setitem__("discord_app_id", app_id.text().strip()),
-                                                self._save()))
+                                                self.cfg.save()))
         region = QCheckBox("Show server location")
         region.setChecked(self.cfg.get("show_region", True))
-        region.toggled.connect(lambda v: (self.cfg.__setitem__("show_region", v), self._save()))
+        region.toggled.connect(lambda v: (self.cfg.__setitem__("show_region", v), self.cfg.save()))
         cl.addWidget(rpc)
         cl.addWidget(app_id)
         cl.addWidget(region)
         lay.addWidget(c)
 
-        c, cl = card("Roblox")
+        c, cl = card()
+        cl.addWidget(label("Roblox", "h2"))
         multi = QCheckBox("Allow more than one Roblox window at once")
         multi.setChecked(self.cfg.get("multi_instance", False))
-        multi.toggled.connect(lambda v: (self.cfg.__setitem__("multi_instance", v), self._save()))
+        multi.toggled.connect(lambda v: (self.cfg.__setitem__("multi_instance", v), self.cfg.save()))
         cl.addWidget(multi)
         self.reinstall_btn = QPushButton("Reinstall Roblox")
         self.reinstall_btn.clicked.connect(self._reinstall)
-        cache = QPushButton("Clear download cache")
+        cache = ghost(QPushButton("Clear download cache"))
         cache.clicked.connect(self._clear_cache)
         cl.addWidget(row(self.reinstall_btn, cache))
         lay.addWidget(c)
@@ -779,7 +840,7 @@ class MainWindow(QMainWindow):
         v = self.cfg.get("current_version")
         if v:
             shutil.rmtree(roblox.client_dir(v), ignore_errors=True)
-        self.nav.button(0).click()
+        self.nav_buttons[0].click()
         self.start_launch(None, launch=False)
 
     def _clear_cache(self):

@@ -14,8 +14,7 @@ CONFIG_FILE = BASE / "settings.json"
 
 DEFAULTS = {
     # look
-    "accent": "#ff6fae",
-    "background": "#14121a",
+    "theme": {"bg": "#16181c", "surface": "#26292f", "accent": "#1bd96a", "text": "#ecf0f1"},
     "bg_image": "",
     "click_sound": True,
     "custom_sound": False,
