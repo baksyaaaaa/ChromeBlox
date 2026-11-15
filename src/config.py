@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "Chrome Blox"
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.5.0"
 
 BASE = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / ".local" / "share")) / "ChromeBlox"
 VERSIONS = BASE / "Versions"
@@ -16,6 +16,8 @@ DEFAULTS = {
     # look
     "theme": {"bg": "#16181c", "surface": "#26292f", "accent": "#1bd96a", "text": "#ecf0f1"},
     "bg_image": "",
+    "ui_font": "Segoe UI",
+    "ui_font_size": 13,
     "click_sound": True,
     "custom_sound": False,
     "volume": 0.6,
