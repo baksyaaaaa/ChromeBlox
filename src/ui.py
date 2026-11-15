@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 import config
 import mods
+import overlay
 import presence
 import roblox
 import shortcuts
@@ -172,8 +173,15 @@ class MainWindow(QMainWindow, ExtraPages):
         self.tray.activated.connect(
             lambda r: self._restore() if r == QSystemTrayIcon.ActivationReason.Trigger else None)
 
+        self.overlay = overlay.Overlay(cfg, self.clicker)
+        self.rshift = overlay.RightShiftWatcher(self.overlay.isVisible)
+        self.rshift.tapped.connect(self.overlay.toggle)
+        if cfg.get("overlay", True):
+            self.rshift.start()
+
         self._sfx = SfxFilter(self.clicker)
-        QApplication.instance().installEventFilter(self._sfx)
+        self.wire_sfx(self)
+        self.wire_sfx(self.overlay)
 
         self.apply_theme(self.cfg["theme"], save=False)
         self.nav_buttons[0].setChecked(True)
@@ -182,6 +190,17 @@ class MainWindow(QMainWindow, ExtraPages):
         self._scan_recent_from_logs()
         if self.from_protocol:
             self.start_launch(self.launch_uri)
+
+    def wire_sfx(self, root):
+        """Creamy click on every button/checkbox under root (per widget, not app-wide: app-wide hooks crash
+        Qt's web views)."""
+        widgets = [root] if isinstance(root, (QPushButton, QCheckBox)) else []
+        widgets += root.findChildren(QPushButton) + root.findChildren(QCheckBox)
+        for w in widgets:
+            if not w.property("_sfx"):
+                w.setProperty("_sfx", True)
+                w.installEventFilter(self._sfx)
+        return root
 
     # ------------------------------------------------ shell
     def _sidebar(self):
@@ -416,10 +435,13 @@ class MainWindow(QMainWindow, ExtraPages):
         else:
             self.now_icon.clear()
         self.now_card.show()
+        self.overlay.set_game(g.get("name", ""))
         self._remember_game(g)
 
     def _roblox_closed(self):
         self.watcher = None
+        self.overlay.set_game("")
+        self.overlay.close_overlay()
         self.now_card.hide()
         self.status_lbl.setText("Ready")
         self.progress.setValue(0)
@@ -436,6 +458,7 @@ class MainWindow(QMainWindow, ExtraPages):
         if self.watcher:
             self.watcher.stop()
         self.tray.hide()
+        self.overlay.hide()
         QApplication.quit()
 
     def closeEvent(self, e):
@@ -750,6 +773,23 @@ class MainWindow(QMainWindow, ExtraPages):
         lay.addWidget(c)
 
         c, cl = card()
+        cl.addWidget(label("Right Shift overlay", "h2"))
+        cl.addWidget(label("Tap Right Shift in Roblox to pop a browser over the game, tap again (or Esc) to go "
+                           "back. Typing capitals in chat won't open it. Works while Chrome Blox is running.",
+                           "muted"))
+        ov = QCheckBox("Enable the overlay")
+        ov.setChecked(self.cfg.get("overlay", True))
+        ov.toggled.connect(self._toggle_overlay)
+        url = QLineEdit(self.cfg.get("overlay_url", overlay.DEFAULT_URL))
+        url.setPlaceholderText("Overlay page")
+        url.setFixedWidth(320)
+        url.editingFinished.connect(lambda: (self.cfg.__setitem__("overlay_url", url.text().strip()
+                                                                  or overlay.DEFAULT_URL), self.cfg.save()))
+        cl.addWidget(ov)
+        cl.addWidget(row(label("Page", "h2"), url))
+        lay.addWidget(c)
+
+        c, cl = card()
         cl.addWidget(label("Discord", "h2"))
         cl.addWidget(label("Shows the game you're in on your Discord profile. Make an app at "
                            "discord.com/developers/applications (its name is what Discord shows, e.g. Roblox), "
@@ -784,6 +824,11 @@ class MainWindow(QMainWindow, ExtraPages):
         lay.addWidget(c)
         lay.addStretch(1)
         return page
+
+    def _toggle_overlay(self, on):
+        self.cfg["overlay"] = on
+        self.cfg.save()
+        self.rshift.start() if on else self.rshift.stop()
 
     def _make_shortcuts(self):
         try:

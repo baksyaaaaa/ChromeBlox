@@ -146,6 +146,7 @@ QPushButton[join="true"] { background: $accent_glass; border: 1px solid $accent_
 QPushButton[join="true"]:hover { background: $accent_glass_hover; }
 QProgressBar[thin="true"] { max-height: 6px; min-height: 6px; border-radius: 3px; }
 QProgressBar[thin="true"]::chunk { border-radius: 3px; }
+QFrame[overlay="true"] { background: $bg; border: 1px solid $border2; }
 QToolTip, QMessageBox, QDialog { background: $surface; color: $text; border: 1px solid $border; }
 """)
 
@@ -166,6 +167,7 @@ def build_qss(theme, has_image=False):
         glass=rgba(text, 0.07), glass_hover=rgba(text, 0.12), glass_press=rgba(text, 0.04),
         glass_border=rgba(text, 0.16),
         accent_glass=rgba(acc, 0.42), accent_glass_hover=rgba(acc, 0.56), accent_glass_border=rgba(acc, 0.85),
+        overlay_bg=rgba(bg, 0.97),
         tile_hover=rgba(mix(surf, text, 0.05), a_card), accent_glow=rgba(acc, 0.30),
         accent_soft=rgba(acc, 0.16), accent_soft_border=rgba(acc, 0.35),
         chev=chev, check=check)

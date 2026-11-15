@@ -400,6 +400,7 @@ class ExtraPages:
         join.clicked.connect(lambda _=False, sid=sid: self._join_server(sid))
         lay.addWidget(join)
 
+        self.wire_sfx(join)
         f._faces, f._tokens, f._playing = faces, tokens, playing
         self.srv_cards[sid] = f
         return f
