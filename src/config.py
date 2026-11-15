@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "Chrome Blox"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 
 BASE = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / ".local" / "share")) / "ChromeBlox"
 VERSIONS = BASE / "Versions"
@@ -26,6 +26,9 @@ DEFAULTS = {
     "custom_font": "",
     "custom_cursor": "",
     "fflags": {},
+    # updates
+    "auto_update": True,
+    "github_mods": True,
     # overlay
     "overlay": True,
     "overlay_url": "https://www.eldorado.gg/",

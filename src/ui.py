@@ -14,16 +14,18 @@ from PySide6.QtWidgets import (
 
 import config
 import mods
+import modsync
 import overlay
 import presence
 import roblox
 import shortcuts
 import sound
 import theme as th
+import updater
 
 
 from pages import ExtraPages
-from widgets import app_icon, card, dot_icon, ghost, header, label, row, scrub
+from widgets import app_icon, bg, card, dot_icon, ghost, header, label, row, scrub
 
 
 class SfxFilter(QObject):
@@ -97,6 +99,12 @@ class LaunchWorker(QObject):
             if not self.launch:
                 self.done.emit(None)
                 return
+            if self.cfg.get("github_mods", True):
+                try:
+                    self.status.emit("Checking GitHub for new mods...")
+                    modsync.sync(self.status.emit)
+                except Exception:
+                    pass  # offline or rate limited: use what we already have
             self.status.emit("Applying mods...")
             mods.apply_mods(folder, self.cfg)
             self.status.emit("Starting Roblox...")
@@ -188,6 +196,7 @@ class MainWindow(QMainWindow, ExtraPages):
         self.refresh_play()
         self._restore_session()
         self._scan_recent_from_logs()
+        self._startup_updates()
         if self.from_protocol:
             self.start_launch(self.launch_uri)
 
@@ -276,6 +285,17 @@ class MainWindow(QMainWindow, ExtraPages):
     # ------------------------------------------------ play
     def _play(self):
         page, lay = self._page("Play", "Jump into Roblox, or join any game by its link.")
+
+        self.update_card, ul = card()
+        ul.addWidget(label("Update ready", "h2"))
+        self.update_lbl = label("", "muted")
+        ul.addWidget(self.update_lbl)
+        self.update_btn = QPushButton("Restart to update")
+        self.update_btn.setProperty("join", True)
+        self.update_btn.clicked.connect(self._apply_update)
+        ul.addWidget(row(self.update_btn))
+        self.update_card.hide()
+        lay.addWidget(self.update_card)
 
         self.default_card, dl = card()
         dl.addWidget(label("Not your default launcher yet", "h2"))
@@ -773,6 +793,26 @@ class MainWindow(QMainWindow, ExtraPages):
         lay.addWidget(c)
 
         c, cl = card()
+        cl.addWidget(label("Updates", "h2"))
+        cl.addWidget(label(f"You're on build {updater.BUILD or 'dev'}. New builds from GitHub download in the "
+                           "background and install when you restart. Mods in the repo's mods/ folder sync "
+                           "before every launch.", "muted"))
+        au = QCheckBox("Update Chrome Blox automatically")
+        au.setChecked(self.cfg.get("auto_update", True))
+        au.toggled.connect(lambda v: (self.cfg.__setitem__("auto_update", v), self.cfg.save()))
+        gm = QCheckBox("Sync mods from GitHub")
+        gm.setChecked(self.cfg.get("github_mods", True))
+        gm.toggled.connect(lambda v: (self.cfg.__setitem__("github_mods", v), self.cfg.save()))
+        chk = QPushButton("Check for updates")
+        chk.clicked.connect(lambda: self._check_updates(manual=True))
+        sync = ghost(QPushButton("Sync mods now"))
+        sync.clicked.connect(self._sync_mods_now)
+        cl.addWidget(au)
+        cl.addWidget(gm)
+        cl.addWidget(row(chk, sync))
+        lay.addWidget(c)
+
+        c, cl = card()
         cl.addWidget(label("Right Shift overlay", "h2"))
         cl.addWidget(label("Tap Right Shift in Roblox to pop a browser over the game, tap again (or Esc) to go "
                            "back. Typing capitals in chat won't open it. Works while Chrome Blox is running.",
@@ -824,6 +864,68 @@ class MainWindow(QMainWindow, ExtraPages):
         lay.addWidget(c)
         lay.addStretch(1)
         return page
+
+    # ------------------------------------------------ updates
+    def _startup_updates(self):
+        d = updater.ready()
+        if d:
+            self._show_update(d["build"])
+        elif self.cfg.get("auto_update", True):
+            self._check_updates()
+        if self.cfg.get("github_mods", True):
+            bg(modsync.sync)   # quietly warm up the mods cache
+
+    def _check_updates(self, manual=False):
+        if not updater.frozen():
+            if manual:
+                QMessageBox.information(self, config.APP_NAME, "Updates only work in the built app, not from source.")
+            return
+
+        def work():
+            info = updater.check()
+            if info:
+                updater.download(info)
+            return info
+
+        def done(info, err):
+            if err:
+                if manual:
+                    QMessageBox.warning(self, config.APP_NAME, "Couldn't check for updates right now.")
+                return
+            if info:
+                self._show_update(info["build"])
+            elif manual:
+                QMessageBox.information(self, config.APP_NAME, "You're on the newest build.")
+
+        bg(work, done)
+
+    def _show_update(self, build):
+        self.update_lbl.setText(f"Build {build} is downloaded. Restart Chrome Blox to switch to it "
+                                "(Roblox can stay open).")
+        self.update_card.show()
+
+    def _apply_update(self):
+        d = updater.ready()
+        if not d:
+            self.update_card.hide()
+            return
+        try:
+            updater.install_and_restart(d)
+        except Exception as e:
+            QMessageBox.warning(self, config.APP_NAME, scrub(e))
+            return
+        self._quit()
+
+    def _sync_mods_now(self):
+        def done(res, err):
+            if err:
+                QMessageBox.warning(self, config.APP_NAME, "Couldn't reach GitHub right now.")
+                return
+            changed, removed = res
+            QMessageBox.information(self, config.APP_NAME, f"Mods synced: {changed} new/updated, {removed} removed. "
+                                    "They apply next time you launch Roblox.")
+
+        bg(modsync.sync, done)
 
     def _toggle_overlay(self, on):
         self.cfg["overlay"] = on

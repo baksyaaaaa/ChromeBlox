@@ -84,11 +84,13 @@ def apply_mods(root, cfg):
         for n in ("ArrowCursor.png", "ArrowFarCursor.png"):
             ov.put_file(CURSOR_DIR / n, cursor)
 
-    # user's mods folder goes last so it wins
-    if config.MODS.is_dir():
-        for f in sorted(config.MODS.rglob("*")):
-            if f.is_file() and not f.name.startswith(".") and f.name.lower() != "readme.txt":
-                ov.put_file(f.relative_to(config.MODS), f)
+    # mods synced from GitHub, then your own mods folder last so it wins
+    from modsync import GITHUB_MODS
+    for folder in (GITHUB_MODS, config.MODS):
+        if folder.is_dir():
+            for f in sorted(folder.rglob("*")):
+                if f.is_file() and not f.name.startswith(".") and f.name.lower() != "readme.txt":
+                    ov.put_file(f.relative_to(folder), f)
 
     # fast flags
     flags = cfg.get("fflags") or {}

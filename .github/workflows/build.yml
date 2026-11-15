@@ -3,7 +3,9 @@ name: Build
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    paths-ignore:
+      - "mods/**"          # mod changes sync straight from the repo, no rebuild needed
+      - "**.md"
   workflow_dispatch:
 
 permissions:
@@ -22,6 +24,9 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt pyinstaller
 
+      - name: Stamp build number
+        run: Set-Content -Path src/build_info.py -Value "BUILD = ${{ github.run_number }}"
+
       # folder build (not one-file) so it opens fast: the sign-in browser is big
       - name: Build
         run: pyinstaller --noconfirm --onedir --windowed --name ChromeBlox --icon icon.ico --paths src src/main.py
@@ -34,8 +39,11 @@ jobs:
           name: ChromeBlox
           path: dist/ChromeBlox
 
-      - name: Publish release (when you push a v* tag)
-        if: startsWith(github.ref, 'refs/tags/v')
+      # every build becomes a release, so the launcher can update itself
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: build-${{ github.run_number }}
+          name: Chrome Blox build ${{ github.run_number }}
+          make_latest: true
           files: ChromeBlox.zip
