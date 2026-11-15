@@ -133,6 +133,8 @@ class ActivityWatcher(QObject):
                 if m:
                     game = game_info(m.group(2))
                     game["region"] = ""
+                    game["job_id"] = m.group(1)
+                    game["joined_at"] = time.time()
                     start = time.time()
                     self.joined.emit(dict(game))
                     self._rpc_set(game, start)

@@ -181,7 +181,7 @@ class MainWindow(QMainWindow, ExtraPages):
         self.tray.activated.connect(
             lambda r: self._restore() if r == QSystemTrayIcon.ActivationReason.Trigger else None)
 
-        self.overlay = overlay.Overlay(cfg, self.clicker)
+        self.overlay = overlay.Overlay(self)
         self.rshift = overlay.RightShiftWatcher(self.overlay.isVisible)
         self.rshift.tapped.connect(self.overlay.toggle)
         if cfg.get("overlay", True):
@@ -455,12 +455,12 @@ class MainWindow(QMainWindow, ExtraPages):
         else:
             self.now_icon.clear()
         self.now_card.show()
-        self.overlay.set_game(g.get("name", ""))
+        self.overlay.set_game(g)
         self._remember_game(g)
 
     def _roblox_closed(self):
         self.watcher = None
-        self.overlay.set_game("")
+        self.overlay.set_game(None)
         self.overlay.close_overlay()
         self.now_card.hide()
         self.status_lbl.setText("Ready")
@@ -468,6 +468,16 @@ class MainWindow(QMainWindow, ExtraPages):
         self.refresh_play()
         if self.isHidden():
             self._quit()
+
+    def roblox_running(self):
+        return bool(self.watcher and self.watcher.running())
+
+    def close_roblox(self):
+        if self.watcher and self.watcher.running():
+            try:
+                self.watcher.proc.terminate()
+            except Exception:
+                pass
 
     def _restore(self):
         self.showNormal()
@@ -814,19 +824,13 @@ class MainWindow(QMainWindow, ExtraPages):
 
         c, cl = card()
         cl.addWidget(label("Right Shift overlay", "h2"))
-        cl.addWidget(label("Tap Right Shift in Roblox to pop a browser over the game, tap again (or Esc) to go "
-                           "back. Typing capitals in chat won't open it. Works while Chrome Blox is running.",
-                           "muted"))
+        cl.addWidget(label("Tap Right Shift in Roblox for a quick menu: server location, time in server, rejoin, "
+                           "invite link, better server, leave. Tap again (or Esc) to go back. Typing capitals in "
+                           "chat won't open it.", "muted"))
         ov = QCheckBox("Enable the overlay")
         ov.setChecked(self.cfg.get("overlay", True))
         ov.toggled.connect(self._toggle_overlay)
-        url = QLineEdit(self.cfg.get("overlay_url", overlay.DEFAULT_URL))
-        url.setPlaceholderText("Overlay page")
-        url.setFixedWidth(320)
-        url.editingFinished.connect(lambda: (self.cfg.__setitem__("overlay_url", url.text().strip()
-                                                                  or overlay.DEFAULT_URL), self.cfg.save()))
         cl.addWidget(ov)
-        cl.addWidget(row(label("Page", "h2"), url))
         lay.addWidget(c)
 
         c, cl = card()

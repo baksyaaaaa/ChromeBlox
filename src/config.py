@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 APP_NAME = "Chrome Blox"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 
 BASE = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / ".local" / "share")) / "ChromeBlox"
 VERSIONS = BASE / "Versions"
@@ -31,7 +31,6 @@ DEFAULTS = {
     "github_mods": True,
     # overlay
     "overlay": True,
-    "overlay_url": "https://www.eldorado.gg/",
     # discord
     "discord_rpc": False,
     "discord_app_id": "",

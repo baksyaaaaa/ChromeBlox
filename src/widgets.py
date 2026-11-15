@@ -185,7 +185,10 @@ class _Job(QRunnable):
             r, e = self.fn(), None
         except Exception as ex:  # handed to the callback
             r, e = None, ex
-        self.sig.done.emit(r, e)
+        try:
+            self.sig.done.emit(r, e)
+        except RuntimeError:
+            pass  # app closed while this was running
 
 
 _alive = set()
