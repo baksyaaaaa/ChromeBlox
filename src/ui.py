@@ -7,15 +7,13 @@ from pathlib import Path
 from PySide6.QtCore import QEvent, QObject, QThread, Qt, Signal
 from PySide6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QFileDialog, QFontComboBox, QFrame,
-    QGridLayout, QSpinBox,
+    QApplication, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QFileDialog, QFrame, QGridLayout,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QProgressBar,
     QPushButton, QScrollArea, QSlider, QStackedWidget, QSystemTrayIcon, QVBoxLayout, QWidget,
 )
 
 import config
 import mods
-import network
 import modsync
 import overlay
 import presence
@@ -199,7 +197,6 @@ class MainWindow(QMainWindow, ExtraPages):
         self._restore_session()
         self._scan_recent_from_logs()
         self._startup_updates()
-        self._refresh_wifi()
         if self.from_protocol:
             self.start_launch(self.launch_uri)
 
@@ -274,8 +271,7 @@ class MainWindow(QMainWindow, ExtraPages):
         theme = th.clean_theme(theme)
         self.cfg["theme"] = theme
         self.root.reload()
-        QApplication.instance().setStyleSheet(th.build_qss(theme, self.root.has_image(),
-                                                           self.cfg.get("ui_font"), self.cfg.get("ui_font_size")))
+        QApplication.instance().setStyleSheet(th.build_qss(theme, self.root.has_image()))
         icon = app_icon(theme["accent"])
         self.setWindowIcon(icon)
         self.tray.setIcon(icon)
@@ -702,23 +698,6 @@ class MainWindow(QMainWindow, ExtraPages):
         lay.addWidget(c)
 
         c, cl = card()
-        cl.addWidget(label("Launcher font", "h2"))
-        cl.addWidget(label("Font for the whole launcher (in-game font is on the Mods tab).", "muted"))
-        self.font_pick = QFontComboBox()
-        self.font_pick.setCurrentFont(QFont(self.cfg.get("ui_font") or "Segoe UI"))
-        self.font_pick.setMinimumWidth(240)
-        self.font_pick.currentFontChanged.connect(lambda f: self._set_ui_font(family=f.family()))
-        self.font_size = QSpinBox()
-        self.font_size.setRange(10, 18)
-        self.font_size.setValue(int(self.cfg.get("ui_font_size") or 13))
-        self.font_size.setSuffix(" px")
-        self.font_size.valueChanged.connect(lambda v: self._set_ui_font(size=v))
-        freset = ghost(QPushButton("Reset"))
-        freset.clicked.connect(lambda: (self.font_pick.setCurrentFont(QFont("Segoe UI")), self.font_size.setValue(13)))
-        cl.addWidget(row(self.font_pick, self.font_size, freset))
-        lay.addWidget(c)
-
-        c, cl = card()
         cl.addWidget(label("Background image", "h2"))
         cl.addWidget(label("Shows behind everything, cards go see-through.", "muted"))
         pick = QPushButton("Choose image...")
@@ -764,13 +743,6 @@ class MainWindow(QMainWindow, ExtraPages):
             self.apply_theme({**self.cfg["theme"], key: QColor(txt).name()})
         else:
             self.hex_edits[key].setText(self.cfg["theme"][key])
-
-    def _set_ui_font(self, family=None, size=None):
-        if family:
-            self.cfg["ui_font"] = family
-        if size:
-            self.cfg["ui_font_size"] = size
-        self.apply_theme(self.cfg["theme"])
 
     def _pick_bg(self):
         p, _ = QFileDialog.getOpenFileName(self, "Choose a background", "",
@@ -848,17 +820,6 @@ class MainWindow(QMainWindow, ExtraPages):
         cl.addWidget(au)
         cl.addWidget(gm)
         cl.addWidget(row(chk, sync))
-        lay.addWidget(c)
-
-        c, cl = card()
-        cl.addWidget(label("Wi-Fi", "h2"))
-        self.wifi_lbl = label("Checking Wi-Fi...", "muted")
-        cl.addWidget(self.wifi_lbl)
-        wr = ghost(QPushButton("Refresh"))
-        wr.clicked.connect(self._refresh_wifi)
-        ws = QPushButton("Windows Wi-Fi settings")
-        ws.clicked.connect(lambda: os.startfile("ms-settings:network-wifi") if os.name == "nt" else None)
-        cl.addWidget(row(ws, wr))
         lay.addWidget(c)
 
         c, cl = card()
@@ -969,24 +930,6 @@ class MainWindow(QMainWindow, ExtraPages):
                                     "They apply next time you launch Roblox.")
 
         bg(modsync.sync, done)
-
-    def _refresh_wifi(self):
-        self.wifi_lbl.setText("Checking Wi-Fi...")
-
-        def done(st, err):
-            if err:
-                self.wifi_lbl.setText("Couldn't read Wi-Fi status.")
-            elif not st:
-                self.wifi_lbl.setText("No Wi-Fi adapter (wired or Wi-Fi is off).")
-            else:
-                bits = [st["state"].capitalize() or "Unknown"]
-                if st.get("ssid"):
-                    bits.append(st["ssid"])
-                if st.get("signal"):
-                    bits.append(f"signal {st['signal']}")
-                self.wifi_lbl.setText("  ·  ".join(bits))
-
-        bg(network.wifi_status, done)
 
     def _toggle_overlay(self, on):
         self.cfg["overlay"] = on

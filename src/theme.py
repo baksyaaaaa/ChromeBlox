@@ -81,7 +81,7 @@ def make_icons(color_chev, color_check):
 
 
 QSS = Template("""
-* { color: $text; font-size: ${fsize}px; font-family: '$font', 'Segoe UI', sans-serif; }
+* { color: $text; font-size: 13px; font-family: 'Segoe UI', 'Inter', sans-serif; }
 QMainWindow { background: $bg; }
 QWidget#sidebar { background: $sidebar; border-right: 1px solid $border; }
 QLabel { background: transparent; border: none; }
@@ -151,16 +151,14 @@ QToolTip, QMessageBox, QDialog { background: $surface; color: $text; border: 1px
 """)
 
 
-def build_qss(theme, has_image=False, font="Segoe UI", size=13):
+def build_qss(theme, has_image=False):
     t = clean_theme(theme)
     bg, surf, acc, text = t["bg"], t["surface"], t["accent"], t["text"]
     accent_text = "#0b0b0d" if luminance(acc) > 0.5 else "#ffffff"
     chev, check = make_icons(text, accent_text)
     # with a background image, panels go see-through so the image shows
     a_card, a_side = (0.72, 0.80) if has_image else (1.0, 1.0)
-    font = (font or "Segoe UI").replace("'", "")
     return QSS.substitute(
-        font=font, fsize=max(10, min(18, int(size or 13))),
         bg=bg, surface=surf, text=text, accent=acc, accent_text=accent_text,
         sidebar=rgba(surf, a_side), card=rgba(surf, a_card), chip=rgba(bg, 0.6 if has_image else 1.0),
         field=rgba(bg, 0.75), surface_hi=mix(surf, text, 0.07),
